@@ -22,7 +22,6 @@ import (
 	"github.com/pocketbase/pocketbase"
 	"github.com/pocketbase/pocketbase/apis"
 	"github.com/pocketbase/pocketbase/core"
-	"github.com/pocketbase/pocketbase/daos"
 	"github.com/pocketbase/pocketbase/models"
 	"github.com/pocketbase/pocketbase/plugins/migratecmd"
 	"github.com/pocketbase/pocketbase/tools/cron"
@@ -30,7 +29,7 @@ import (
 	"golang.org/x/crypto/ssh"
 )
 
-var Version = "0.1.1"
+var Version = "0.1.2"
 
 var app *pocketbase.PocketBase
 var serverConnections = make(map[string]*Server)
@@ -105,15 +104,12 @@ func main() {
 		// cron job to delete old records
 		scheduler := cron.New()
 		scheduler.MustAdd("delete old records", "8 * * * *", func() {
-			app.Dao().RunInTransaction(func(txDao *daos.Dao) error {
-				collections := []string{"system_stats", "container_stats"}
-				deleteOldRecords(txDao, collections, "1m", time.Hour)
-				deleteOldRecords(txDao, collections, "10m", 12*time.Hour)
-				deleteOldRecords(txDao, collections, "20m", 24*time.Hour)
-				deleteOldRecords(txDao, collections, "120m", 7*24*time.Hour)
-				deleteOldRecords(txDao, collections, "480m", 30*24*time.Hour)
-				return nil
-			})
+			collections := []string{"system_stats", "container_stats"}
+			deleteOldRecords(collections, "1m", time.Hour)
+			deleteOldRecords(collections, "10m", 12*time.Hour)
+			deleteOldRecords(collections, "20m", 24*time.Hour)
+			deleteOldRecords(collections, "120m", 7*24*time.Hour)
+			deleteOldRecords(collections, "480m", 30*24*time.Hour)
 		})
 		scheduler.Start()
 		return nil
@@ -239,12 +235,18 @@ func updateSystems() {
 	}
 	fiftySecondsAgo := time.Now().UTC().Add(-50 * time.Second)
 	batchSize := len(records)/4 + 1
-	for i := 0; i < batchSize; i++ {
-		if records[i].GetDateTime("updated").Time().After(fiftySecondsAgo) {
+	done := 0
+	for _, record := range records {
+		// break if batch size reached or if the system was updated less than 50 seconds ago
+		if done >= batchSize || record.GetDateTime("updated").Time().After(fiftySecondsAgo) {
 			break
 		}
-		// log.Println("updating", records[i].Get(("name")))
-		go updateSystem(records[i])
+		// don't increment for down systems to avoid them jamming the queue
+		// because they're always first when sorted by least recently updated
+		if record.GetString("status") != "down" {
+			done++
+		}
+		go updateSystem(record)
 	}
 }
 

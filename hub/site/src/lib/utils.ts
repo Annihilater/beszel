@@ -34,16 +34,27 @@ const verifyAuth = () => {
 		.authRefresh()
 		.catch(() => {
 			pb.authStore.clear()
+			toast({
+				title: 'Failed to authenticate',
+				description: 'Please log in again',
+				variant: 'destructive',
+			})
 		})
 }
 
 export const updateSystemList = async () => {
-	try {
-		const records = await pb.collection<SystemRecord>('systems').getFullList({ sort: '+name' })
+	// try {
+	const records = await pb.collection<SystemRecord>('systems').getFullList({ sort: '+name' })
+	if (records.length) {
 		$systems.set(records)
-	} catch (e) {
+	} else {
 		verifyAuth()
 	}
+	// }
+	// catch (e) {
+	// 	console.log('verifying auth error', e)
+	// 	verifyAuth()
+	// }
 }
 
 export const updateAlerts = () => {
@@ -220,4 +231,8 @@ export function useClampedIsInViewport(options: HookOptions): [boolean | null, C
 
 export function toFixedWithoutTrailingZeros(num: number, digits: number) {
 	return parseFloat(num.toFixed(digits)).toString()
+}
+
+export function toFixedFloat(num: number, digits: number) {
+	return parseFloat(num.toFixed(digits))
 }

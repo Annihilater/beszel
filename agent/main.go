@@ -24,7 +24,7 @@ import (
 	psutilNet "github.com/shirou/gopsutil/v4/net"
 )
 
-var Version = "0.1.1"
+var Version = "0.1.2"
 
 var containerStatsMap = make(map[string]*PrevContainerStats)
 var containerStatsMutex = &sync.Mutex{}
@@ -73,6 +73,8 @@ func getSystemStats() (*SystemInfo, *SystemStats) {
 		systemStats.MemUsed = bytesToGigabytes(v.Used)
 		systemStats.MemBuffCache = bytesToGigabytes(v.Total - v.Free - v.Used)
 		systemStats.MemPct = twoDecimals(v.UsedPercent)
+		systemStats.Swap = bytesToGigabytes(v.SwapTotal)
+		systemStats.SwapUsed = bytesToGigabytes(v.SwapTotal - v.SwapFree)
 	}
 
 	// disk usage
@@ -151,6 +153,7 @@ func getSystemStats() (*SystemInfo, *SystemStats) {
 func getDockerStats() ([]*ContainerStats, error) {
 	resp, err := dockerClient.Get("http://localhost/containers/json")
 	if err != nil {
+		closeIdleConnections(err)
 		return []*ContainerStats{}, err
 	}
 	defer resp.Body.Close()
@@ -175,15 +178,22 @@ func getDockerStats() ([]*ContainerStats, error) {
 		// note: can't use Created field because it's not updated on restart
 		if strings.HasSuffix(ctr.Status, "seconds") {
 			// if so, remove old container data
-			delete(containerStatsMap, ctr.IdShort)
+			deleteContainerStatsSync(ctr.IdShort)
 		}
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
 			cstats, err := getContainerStats(ctr)
 			if err != nil {
-				// delete container from map and retry once
-				delete(containerStatsMap, ctr.IdShort)
+				// Check if the error is a network timeout
+				if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
+					// Close idle connections to prevent reuse of stale connections
+					closeIdleConnections(err)
+				} else {
+					// otherwise delete container from map
+					deleteContainerStatsSync(ctr.IdShort)
+				}
+				// retry once
 				cstats, err = getContainerStats(ctr)
 				if err != nil {
 					log.Printf("Error getting container stats: %+v\n", err)
@@ -275,6 +285,13 @@ func getContainerStats(ctr *Container) (*ContainerStats, error) {
 		NetworkRecv: bytesToMegabytes(recv_delta),
 	}
 	return cStats, nil
+}
+
+// delete container stats from map using mutex
+func deleteContainerStatsSync(id string) {
+	containerStatsMutex.Lock()
+	defer containerStatsMutex.Unlock()
+	delete(containerStatsMap, id)
 }
 
 func gatherStats() *SystemData {
@@ -433,7 +450,7 @@ func newDockerClient() *http.Client {
 		ForceAttemptHTTP2:   false,
 		IdleConnTimeout:     90 * time.Second,
 		DisableCompression:  true,
-		MaxIdleConnsPerHost: 50,
+		MaxIdleConnsPerHost: 20,
 		DisableKeepAlives:   false,
 	}
 
@@ -455,4 +472,9 @@ func newDockerClient() *http.Client {
 		Timeout:   time.Second,
 		Transport: transport,
 	}
+}
+
+func closeIdleConnections(err error) {
+	log.Printf("Closing idle connections. Error: %+v\n", err)
+	dockerClient.Transport.(*http.Transport).CloseIdleConnections()
 }

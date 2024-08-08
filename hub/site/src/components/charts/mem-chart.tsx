@@ -1,7 +1,7 @@
 import { Area, AreaChart, CartesianGrid, XAxis, YAxis } from 'recharts'
 
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from '@/components/ui/chart'
-import { chartTimeData, cn, formatShortDate, useYaxisWidth } from '@/lib/utils'
+import { chartTimeData, cn, formatShortDate, toFixedFloat, useYaxisWidth } from '@/lib/utils'
 import { useMemo, useRef } from 'react'
 // import Spinner from '../spinner'
 import { useStore } from '@nanostores/react'
@@ -15,20 +15,15 @@ export default function MemChart({
 	ticks: number[]
 	systemData: SystemStatsRecord[]
 }) {
-	const chartTime = useStore($chartTime)
 	const chartRef = useRef<HTMLDivElement>(null)
 	const yAxisWidth = useYaxisWidth(chartRef)
+	const chartTime = useStore($chartTime)
 
 	const yAxisSet = useMemo(() => yAxisWidth !== 180, [yAxisWidth])
 
 	const totalMem = useMemo(() => {
-		const maxMem = Math.ceil(systemData[0]?.stats.m)
-		return maxMem > 2 && maxMem % 2 !== 0 ? maxMem + 1 : maxMem
+		return toFixedFloat(systemData.at(-1)?.stats.m ?? 0, 1)
 	}, [systemData])
-
-	// if (!systemData.length || !ticks.length) {
-	// 	return <Spinner />
-	// }
 
 	return (
 		<div ref={chartRef}>
@@ -47,14 +42,17 @@ export default function MemChart({
 					}}
 				>
 					<CartesianGrid vertical={false} />
-					<YAxis
-						// use "ticks" instead of domain / tickcount if need more control
-						domain={[0, totalMem]}
-						width={yAxisWidth}
-						tickLine={false}
-						axisLine={false}
-						unit={' GB'}
-					/>
+					{totalMem && (
+						<YAxis
+							// use "ticks" instead of domain / tickcount if need more control
+							domain={[0, totalMem]}
+							className="tracking-tighter"
+							width={yAxisWidth}
+							tickLine={false}
+							axisLine={false}
+							unit={' GB'}
+						/>
+					)}
 					<XAxis
 						dataKey="created"
 						domain={[ticks[0], ticks.at(-1)!]}
@@ -87,8 +85,7 @@ export default function MemChart({
 						fill="hsl(var(--chart-2))"
 						fillOpacity={0.4}
 						stroke="hsl(var(--chart-2))"
-						stackId="a"
-						// animationDuration={1200}
+						stackId="1"
 						isAnimationActive={false}
 					/>
 					<Area
@@ -99,8 +96,7 @@ export default function MemChart({
 						fillOpacity={0.2}
 						strokeOpacity={0.3}
 						stroke="hsl(var(--chart-2))"
-						stackId="a"
-						// animationDuration={1200}
+						stackId="1"
 						isAnimationActive={false}
 					/>
 				</AreaChart>

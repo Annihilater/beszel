@@ -1,14 +1,20 @@
 import { Area, AreaChart, CartesianGrid, XAxis, YAxis } from 'recharts'
 
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from '@/components/ui/chart'
-import { chartTimeData, cn, formatShortDate, useYaxisWidth } from '@/lib/utils'
+import {
+	chartTimeData,
+	cn,
+	formatShortDate,
+	toFixedWithoutTrailingZeros,
+	useYaxisWidth,
+} from '@/lib/utils'
 // import Spinner from '../spinner'
 import { useStore } from '@nanostores/react'
 import { $chartTime } from '@/lib/stores'
 import { SystemStatsRecord } from '@/types'
 import { useMemo, useRef } from 'react'
 
-export default function CpuChart({
+export default function SwapChart({
 	ticks,
 	systemData,
 }: {
@@ -33,11 +39,11 @@ export default function CpuChart({
 					<CartesianGrid vertical={false} />
 					<YAxis
 						className="tracking-tighter"
-						// domain={[0, (max: number) => Math.ceil(max)]}
+						domain={[0, () => toFixedWithoutTrailingZeros(systemData.at(-1)?.stats.s ?? 0.04, 2)]}
 						width={yAxisWidth}
 						tickLine={false}
 						axisLine={false}
-						unit={'%'}
+						unit={' GB'}
 					/>
 					<XAxis
 						dataKey="created"
@@ -55,23 +61,20 @@ export default function CpuChart({
 						animationDuration={150}
 						content={
 							<ChartTooltipContent
-								unit="%"
+								unit=" GB"
 								labelFormatter={(_, data) => formatShortDate(data[0].payload.created)}
 								indicator="line"
 							/>
 						}
 					/>
 					<Area
-						dataKey="stats.cpu"
-						name="CPU Usage"
+						dataKey="stats.su"
+						name="Swap Usage"
 						type="monotoneX"
-						fill="hsl(var(--chart-1))"
+						fill="hsl(var(--chart-2))"
 						fillOpacity={0.4}
-						stroke="hsl(var(--chart-1))"
+						stroke="hsl(var(--chart-2))"
 						isAnimationActive={false}
-						// animationEasing="ease-out"
-						// animationDuration={1200}
-						// animateNewValues={true}
 					/>
 				</AreaChart>
 			</ChartContainer>
